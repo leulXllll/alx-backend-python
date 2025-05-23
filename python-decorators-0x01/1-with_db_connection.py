@@ -2,9 +2,12 @@ import sqlite3
 import functools
 
 def with_db_connection(func):
-    conn = sqlite3.connect('users.db')
     
     def wrapper(*args,**kwargs):
+        try:
+            conn = sqlite3.connect('users.db')
+        finally:
+            conn.close()
         return func(conn,*args,**kwargs)
     return wrapper
 
