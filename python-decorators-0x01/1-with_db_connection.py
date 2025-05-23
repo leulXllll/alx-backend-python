@@ -4,11 +4,11 @@ import functools
 def with_db_connection(func):
     
     def wrapper(*args,**kwargs):
+        conn = sqlite3.connect('users.db')
         try:
-            conn = sqlite3.connect('users.db')
+            func(conn,*args,**kwargs)
         finally:
             conn.close()
-        return func(conn,*args,**kwargs)
     return wrapper
 
 @with_db_connection 
