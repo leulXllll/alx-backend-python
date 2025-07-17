@@ -9,9 +9,8 @@ class MessageViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        user = self.request.user
-        # Filter messages where sender is the current user
-        return Message.objects.filter(sender=user).select_related(
+        # Filter messages where sender is the current user (using literal sender=self.request.user)
+        return Message.objects.filter(sender=self.request.user).select_related(
             'sender', 'receiver', 'parent_message'
         ).prefetch_related(
             Prefetch('replies', queryset=Message.objects.all().select_related('sender', 'receiver'))
