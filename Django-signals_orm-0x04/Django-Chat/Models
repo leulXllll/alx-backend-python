@@ -1,20 +1,49 @@
 from django.db import models
 from django.contrib.auth.models import User
-from django.db.models.signals import pre_save
-from django.dispatch import receiver
+from django.db.models import Prefetch
 
-# Primary Message model
 class Message(models.Model):
     sender = models.ForeignKey(User, related_name='sent_messages', on_delete=models.CASCADE)
     receiver = models.ForeignKey(User, related_name='received_messages', on_delete=models.CASCADE)
     content = models.TextField()
     timestamp = models.DateTimeField(auto_now_add=True)
     edited = models.BooleanField(default=False)
+    edited_at = models.DateTimeField(null=True, blank=True)
+    edited_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='edited_messages')
+    
+    # 🧩 For threaded replies
+    parent_message = models.ForeignKey('self', null=True, blank=True, on_delete=models.CASCADE, related_name='replies')
 
     def __str__(self):
         return f"{self.sender} to {self.receiver}: {self.content[:30]}"
 
-# Message history model
+    def get_thread(self):
+        """
+        Recursively fetch all replies to this message.
+        """
+        thread = []
+
+        def fetch_replies(message):
+            replies = message.replies.all()
+            for reply in replies:
+                thread.append(reply)
+                fetch_replies(reply)
+
+        fetch_replies(self)
+        return thread
+
+    @staticmethod
+    def fetch_conversation_with_replies(user):
+        """
+        Efficiently fetch all messages in user's conversations including replies.
+        """
+        return Message.objects.filter(receiver=user).select_related(
+            'sender', 'receiver', 'parent_message'
+        ).prefetch_related(
+            Prefetch('replies', queryset=Message.objects.all().select_related('sender', 'receiver'))
+        ).order_by('timestamp')
+
+
 class MessageHistory(models.Model):
     message = models.ForeignKey(Message, on_delete=models.CASCADE, related_name='history')
     old_content = models.TextField()
@@ -22,18 +51,3 @@ class MessageHistory(models.Model):
 
     def __str__(self):
         return f"History for Message ID {self.message.id}"
-
-# Signal to log edits
-@receiver(pre_save, sender=Message)
-def log_message_edit(sender, instance, **kwargs):
-    if instance.pk:
-        try:
-            old_message = Message.objects.get(pk=instance.pk)
-            if old_message.content != instance.content:
-                MessageHistory.objects.create(
-                    message=instance,
-                    old_content=old_message.content
-                )
-                instance.edited = True
-        except Message.DoesNotExist:
-            pass
