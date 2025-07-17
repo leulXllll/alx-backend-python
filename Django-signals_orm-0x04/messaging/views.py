@@ -1,14 +1,36 @@
-from django.contrib.auth.models import User
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_http_methods
+from rest_framework import viewsets
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from .models import Message
+from .serializers import MessageSerializer
+from django.db.models import Prefetch
 
-@csrf_exempt
-@require_http_methods(["DELETE"])
-def delete_user(request, user_id):
-    try:
-        user = User.objects.get(id=user_id)
-        user.delete()
-        return JsonResponse({'message': 'User and related data deleted successfully.'})
-    except User.DoesNotExist:
-        return JsonResponse({'error': 'User not found.'}, status=404)
+class MessageViewSet(viewsets.ModelViewSet):
+    serializer_class = MessageSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        # Fetch messages where user is sender or receiver
+        qs = Message.objects.filter(sender=user).select_related('sender', 'receiver', 'parent_message').prefetch_related(
+            Prefetch('replies', queryset=Message.objects.all().select_related('sender', 'receiver'))
+        ).order_by('timestamp')
+        return qs
+
+    def list(self, request, *args, **kwargs):
+        """
+        Return messages with their threaded replies recursively.
+        """
+        messages = self.get_queryset()
+        serializer = self.get_serializer(messages, many=True)
+        return Response(serializer.data)
+
+    def get_thread(self, message):
+        """
+        Recursively fetch all replies for a message.
+        """
+        thread = []
+        for reply in message.replies.all():
+            thread.append(reply)
+            thread.extend(self.get_thread(reply))
+        return thread
