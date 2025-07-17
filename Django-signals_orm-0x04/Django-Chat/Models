@@ -1,0 +1,39 @@
+from django.db import models
+from django.contrib.auth.models import User
+from django.db.models.signals import pre_save
+from django.dispatch import receiver
+
+# Primary Message model
+class Message(models.Model):
+    sender = models.ForeignKey(User, related_name='sent_messages', on_delete=models.CASCADE)
+    receiver = models.ForeignKey(User, related_name='received_messages', on_delete=models.CASCADE)
+    content = models.TextField()
+    timestamp = models.DateTimeField(auto_now_add=True)
+    edited = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"{self.sender} to {self.receiver}: {self.content[:30]}"
+
+# Message history model
+class MessageHistory(models.Model):
+    message = models.ForeignKey(Message, on_delete=models.CASCADE, related_name='history')
+    old_content = models.TextField()
+    edited_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"History for Message ID {self.message.id}"
+
+# Signal to log edits
+@receiver(pre_save, sender=Message)
+def log_message_edit(sender, instance, **kwargs):
+    if instance.pk:
+        try:
+            old_message = Message.objects.get(pk=instance.pk)
+            if old_message.content != instance.content:
+                MessageHistory.objects.create(
+                    message=instance,
+                    old_content=old_message.content
+                )
+                instance.edited = True
+        except Message.DoesNotExist:
+            pass
