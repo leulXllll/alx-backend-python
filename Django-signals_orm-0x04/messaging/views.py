@@ -1,17 +1,14 @@
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 from .models import Message
 from .serializers import MessageSerializer
-from django.db.models import Prefetch
 
-class MessageViewSet(viewsets.ModelViewSet):
-    serializer_class = MessageSerializer
+class UnreadMessageViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
 
-    def get_queryset(self):
-        # Filter messages where sender is the current user (using literal sender=self.request.user)
-        return Message.objects.filter(sender=request.user).select_related(
-            'sender', 'receiver', 'parent_message'
-        ).prefetch_related(
-            Prefetch('replies', queryset=Message.objects.all().select_related('sender', 'receiver'))
-        ).order_by('timestamp')
+    def list(self, request):
+        #  Uses custom manager and .only()
+        unread_messages = Message.unread.for_user(request.user)
+        serializer = MessageSerializer(unread_messages, many=True)
+        return Response(serializer.data)
