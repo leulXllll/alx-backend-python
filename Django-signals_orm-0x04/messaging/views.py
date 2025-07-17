@@ -10,7 +10,7 @@ class MessageViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         # Filter messages where sender is the current user (using literal sender=self.request.user)
-        return Message.objects.filter(sender=self.request.user).select_related(
+        return Message.objects.filter(sender=request.user).select_related(
             'sender', 'receiver', 'parent_message'
         ).prefetch_related(
             Prefetch('replies', queryset=Message.objects.all().select_related('sender', 'receiver'))
